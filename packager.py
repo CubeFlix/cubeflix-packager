@@ -2,8 +2,11 @@
 # Cubeflix packager.
 
 import tempfile, shutil, os, datetime, json
-import xml.etree.cElementTree as ET
 import tarfile, zipfile
+import xml.etree.cElementTree as ET
+from contextlib import contextmanager
+
+import logging
 
 FORMAT_TARBALL = 'tar'
 FORMAT_TARBALL_COMPRESSED = 'tar-gz'
@@ -22,6 +25,18 @@ def copy_path(src, dest):
         shutil.copytree(src, dest)
     else:
         shutil.copy(src, dest)
+
+@contextmanager
+def working_directory(path):
+
+    """A context manager to set the current working directory. From https://gist.github.com/nottrobin/3d675653244f8814838a."""
+
+    prev_cwd = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev_cwd)
 
 class Project:
 
@@ -42,6 +57,8 @@ class Project:
 
         """Produce releases for the project."""
 
+        logging.info(f"Releasing project {self.name} to path {output_path}...")
+
         if os.path.isdir(output_path):
             # Folder exists, delete the output folder.
             shutil.rmtree(output_path)
@@ -55,8 +72,11 @@ class Project:
             package.release(output_path)
 
         # Prepare the manifest file.
+        logging.info(f"Writing project manifest...")
         with open(os.path.join(output_path, "MANIFEST.xml"), 'wb') as manifest_file:
             manifest_file.write(self.create_manifest())
+
+        logging.info(f"Released project {self.name} to path {output_path}.")
 
     def create_manifest(self):
 
@@ -125,23 +145,29 @@ class Package:
 
         """Produce a release for the package."""
 
+        logging.info(f"Releasing package {self.name} to path {output_path} ({self.version})...")
+
         # Create a temporary folder to prepare the package.
         with tempfile.TemporaryDirectory() as temp_folder:
             # Copy the paths into the temporary folder.
+            logging.info(f"Copying files...")
             for path in self.contents:
                 # Copy the path into the temporary folder.
                 basename = os.path.basename(path)
                 copy_path(os.path.join(self.path, path), os.path.join(temp_folder, basename))
 
             # Prepare the package manifest.
+            logging.info(f"Writing package manifest...")
             with open(os.path.join(temp_folder, "MANIFEST.xml"), 'wb') as manifest_file:
                 manifest_file.write(self.create_manifest())
 
             # Call the pre-package function.
             if self.pre_package:
+                logging.info(f"Running pre-package script...")
                 self.pre_package(temp_folder)
 
             # Produce the release.
+            logging.info(f"Outputting package release (output format {self.output_format})...")
             if self.output_format in (FORMAT_TARBALL, FORMAT_TARBALL_COMPRESSED):
                 self._release_tar(output_path, temp_folder)
             elif self.output_format == FORMAT_ZIP:
@@ -150,22 +176,20 @@ class Package:
                 self._release_folder(output_path, temp_folder)
             else:
                 raise CubeflixPackagerException("Invalid output format")
+            
+        logging.info(f"Released package {self.name} to path {output_path} ({self.version}).")
 
     def create_manifest_tree(self):
 
         """Create the manifest XML tree."""
 
         # Create the XML manifest.
-        tree = ET.Element("package")
+        tree = ET.Element("package", {"format": self.output_format})
         
         # Add the package information.
         name = ET.Element("name")
         name.text = self.name
         tree.append(name)
-
-        format = ET.Element("format")
-        format.text = self.output_format
-        tree.append(format)
 
         description = ET.Element("description")
         description.text = self.description
@@ -226,15 +250,25 @@ def load_project(path):
 
     try:
         # Load the project JSON file.
-        project_json = json.load(path)
+        with open(path, 'r') as json_file:
+            project_json = json.load(json_file)
 
         # Load each package.
         packages = []
         for package in project_json['packages']:
+            # Create the pre-package function.
+            if 'pre_package' in package:
+                def pre_package(path):
+                    with working_directory(path):
+                        for command in package['pre_package']:
+                            os.system(command)
+            else:
+                pre_package = None
+
             # Create the package.
             package_obj = Package(package['name'], package['path'], package['contents'], \
                                   package['output_format'], package['description'], package['version'], \
-                                  package['author'])
+                                  package['author'], pre_package=pre_package)
             packages.append(package_obj)
 
         # Create the project.
