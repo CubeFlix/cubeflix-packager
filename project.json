@@ -13,7 +13,8 @@
                 "packager.py",
                 "cbf.py",
                 "archive.py",
-                "README.md"
+                "README.md",
+                "project.json"
             ],
             "output_formats": ["tar-gz", "zip"],
             "description": "cubeflix-packager source",

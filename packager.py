@@ -269,10 +269,14 @@ class Package:
 
         """Release the package in zip file format."""
 
-        # Zip the temp folder.
-        with zipfile.ZipFile(os.path.join(output_path, self.name + '.zip'), "w") as zip_file:
-            for path in ((self.package_items + ["MANIFEST.xml"]) if self.package_items else os.listdir(temp_folder)):
-                zip_file.write(os.path.join(temp_folder, path), path)
+        if self.package_items:
+            # Delete everything except the items in package_items.
+            for path in os.listdir(temp_folder):
+                if not path in self.package_items and path != "MANIFEST.xml":
+                    delete_path(os.path.join(temp_folder, path))
+
+        # Zip archive the temp folder.
+        shutil.make_archive(os.path.join(output_path, self.name), "zip", temp_folder, ".")
 
     def _release_cbf(self, output_path, temp_folder):
 
