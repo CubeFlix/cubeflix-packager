@@ -11,6 +11,8 @@
             "contents": [
                 "main.py",
                 "packager.py",
+                "cbf.py",
+                "archive.py",
                 "README.md"
             ],
             "output_formats": ["tar-gz", "zip"],
@@ -24,6 +26,8 @@
             "contents": [
                 "main.py",
                 "packager.py",
+                "cbf.py",
+                "archive.py",
                 "README.md"
             ],
             "pre_package": [
@@ -31,7 +35,8 @@
                 "powershell -Command cp dist/main.exe cubeflix-packager.exe"
             ],
             "package_items": [
-                "cubeflix-packager.exe"
+                "cubeflix-packager.exe",
+                "README.md"
             ],
             "output_formats": ["tar-gz", "zip"],
             "description": "cubeflix-packager windows distribution",
