@@ -3,6 +3,7 @@
 
 import tempfile, shutil, os, datetime, json
 import tarfile, zipfile
+import archive as cbf
 import xml.etree.cElementTree as ET
 from contextlib import contextmanager
 
@@ -11,6 +12,7 @@ import logging
 FORMAT_TARBALL = 'tar'
 FORMAT_TARBALL_COMPRESSED = 'tar-gz'
 FORMAT_ZIP = 'zip'
+FORMAT_CBF = 'cbf'
 FORMAT_FOLDER = 'folder'
 
 class CubeflixPackagerException(Exception):
@@ -25,6 +27,15 @@ def copy_path(src, dest):
         shutil.copytree(src, dest)
     else:
         shutil.copy(src, dest)
+
+def delete_path(path):
+
+    """Delete a path."""
+
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
 
 @contextmanager
 def working_directory(path):
@@ -120,25 +131,31 @@ class Package:
 
     """A package for a Cubeflix project."""
 
-    def __init__(self, name, path, contents, output_format, description, version, author, pre_package=None):
+    def __init__(self, name, path, contents, output_formats, description, version, author, pre_package=None, package_items=None):
 
         """Create the package. `contents` should be a list of paths to include 
            in the package. Function `pre_package` will be called with the path 
-           to the temporary package."""
+           to the temporary package. If `package_items` is not None, it should
+           be a list of paths to include in the final package. If it is None, 
+           the package will include all items in the temp folder after 
+           pre-packaging."""
 
         self.name = name
         self.path = path
         self.contents = contents
-        self.output_format = output_format.lower()
+        self.output_formats = [i.lower() for i in output_formats]
         self.pre_package = pre_package
         self.description = description
         self.version = version
         self.author = author
+        self.package_items = package_items
 
-        assert self.output_format in (FORMAT_TARBALL, \
+        for i in self.output_formats:
+            assert i in (FORMAT_TARBALL, \
                                       FORMAT_TARBALL_COMPRESSED, \
                                       FORMAT_ZIP, \
-                                      FORMAT_FOLDER), \
+                                      FORMAT_FOLDER, \
+                                      FORMAT_CBF), \
                                       "Invalid output format"
 
     def release(self, output_path):
@@ -166,16 +183,21 @@ class Package:
                 logging.info(f"Running pre-package script...")
                 self.pre_package(temp_folder)
 
-            # Produce the release.
-            logging.info(f"Outputting package release (output format {self.output_format})...")
-            if self.output_format in (FORMAT_TARBALL, FORMAT_TARBALL_COMPRESSED):
-                self._release_tar(output_path, temp_folder)
-            elif self.output_format == FORMAT_ZIP:
-                self._release_zip(output_path, temp_folder)
-            elif self.output_format == FORMAT_FOLDER:
-                self._release_folder(output_path, temp_folder)
-            else:
-                raise CubeflixPackagerException("Invalid output format")
+            # Produce the releases.
+            for i in self.output_formats:
+                logging.info(f"Outputting package release (output format {i})...")
+                if i == FORMAT_TARBALL:
+                    self._release_tar(output_path, temp_folder)
+                elif i == FORMAT_TARBALL_COMPRESSED:
+                    self._release_tar_gz(output_path, temp_folder)
+                elif i == FORMAT_ZIP:
+                    self._release_zip(output_path, temp_folder)
+                elif i == FORMAT_CBF:
+                    self._release_cbf(output_path, temp_folder)
+                elif i == FORMAT_FOLDER:
+                    self._release_folder(output_path, temp_folder)
+                else:
+                    raise CubeflixPackagerException("Invalid output format")
             
         logging.info(f"Released package {self.name} to path {output_path} ({self.version}).")
 
@@ -184,7 +206,7 @@ class Package:
         """Create the manifest XML tree."""
 
         # Create the XML manifest.
-        tree = ET.Element("package", {"format": self.output_format})
+        tree = ET.Element("package")
         
         # Add the package information.
         name = ET.Element("name")
@@ -202,6 +224,12 @@ class Package:
         author = ET.Element("author")
         author.text = self.author
         tree.append(author)
+
+        # Add the format information.
+        formats = ET.Element("formats")
+        for i in self.output_formats:
+            formats.append(ET.Element("format", {"type": i}))
+        tree.append(formats)
 
         return tree
 
@@ -224,23 +252,50 @@ class Package:
         """Release the package in tarball format."""
 
         # Tarball the temp folder.
-        with tarfile.open(os.path.join(output_path, self.name + ('.tar.gz' if self.output_format == FORMAT_TARBALL_COMPRESSED else '.tar')), \
-                          "w:gz" if self.output_format == FORMAT_TARBALL_COMPRESSED else "w") as tar_file:
-            for path in os.listdir(temp_folder):
+        with tarfile.open(os.path.join(output_path, self.name + '.tar'), "w") as tar_file:
+            for path in ((self.package_items + ["MANIFEST.xml"]) if self.package_items else os.listdir(temp_folder)):
                 tar_file.add(os.path.join(temp_folder, path), path)
-    
+
+    def _release_tar_gz(self, output_path, temp_folder):
+
+        """Release the package in compressed tarball format."""
+
+        # Tarball the temp folder.
+        with tarfile.open(os.path.join(output_path, self.name + '.tar.gz'), "w:gz") as tar_file:
+            for path in ((self.package_items + ["MANIFEST.xml"]) if self.package_items else os.listdir(temp_folder)):
+                tar_file.add(os.path.join(temp_folder, path), path)
+        
     def _release_zip(self, output_path, temp_folder):
 
         """Release the package in zip file format."""
 
         # Zip the temp folder.
         with zipfile.ZipFile(os.path.join(output_path, self.name + '.zip'), "w") as zip_file:
-            for path in os.listdir(temp_folder):
+            for path in ((self.package_items + ["MANIFEST.xml"]) if self.package_items else os.listdir(temp_folder)):
                 zip_file.write(os.path.join(temp_folder, path), path)
+
+    def _release_cbf(self, output_path, temp_folder):
+
+        """Release the package in CBF file format."""
+
+        if self.package_items:
+            # Delete everything except the items in package_items.
+            for path in os.listdir(temp_folder):
+                if not path in self.package_items and path != "MANIFEST.xml":
+                    delete_path(os.path.join(temp_folder, path))
+
+        # Archive the temp folder.
+        cbf.compress(temp_folder, os.path.join(output_path, self.name + '.cbf'))
     
     def _release_folder(self, output_path, temp_folder):
 
         """Release the package as a folder."""
+
+        if self.package_items:
+            # Delete everything except the items in package_items.
+            for path in os.listdir(temp_folder):
+                if not path in self.package_items and path != "MANIFEST.xml":
+                    delete_path(os.path.join(temp_folder, path))
 
         copy_path(temp_folder, os.path.join(output_path, self.name))
 
@@ -265,10 +320,15 @@ def load_project(path):
             else:
                 pre_package = None
 
+            if 'package_items' in package:
+                package_items = package['package_items']
+            else:
+                package_items = None
+
             # Create the package.
             package_obj = Package(package['name'], package['path'], package['contents'], \
-                                  package['output_format'], package['description'], package['version'], \
-                                  package['author'], pre_package=pre_package)
+                                  package['output_formats'], package['description'], package['version'], \
+                                  package['author'], pre_package=pre_package, package_items=package_items)
             packages.append(package_obj)
 
         # Create the project.
