@@ -1,0 +1,42 @@
+{
+    "name": "cubeflix-packager",
+    "path": "",
+    "description": "The Cubeflix internal packager utility.",
+    "author": "cubeflix",
+    "license": "none",
+    "packages": [
+        {
+            "name": "source",
+            "path": "",
+            "contents": [
+                "main.py",
+                "packager.py",
+                "README.md"
+            ],
+            "output_formats": ["tar-gz", "zip"],
+            "description": "cubeflix-packager source",
+            "version": "1.0.0",
+            "author": "cubeflix"
+        },
+        {
+            "name": "windows",
+            "path": "",
+            "contents": [
+                "main.py",
+                "packager.py",
+                "README.md"
+            ],
+            "pre_package": [
+                "pyinstaller main.py --onefile",
+                "powershell -Command cp dist/main.exe cubeflix-packager.exe"
+            ],
+            "package_items": [
+                "cubeflix-packager.exe"
+            ],
+            "output_formats": ["tar-gz", "zip"],
+            "description": "cubeflix-packager windows distribution",
+            "version": "1.0.0",
+            "author": "cubeflix"
+        }
+    ]
+}
