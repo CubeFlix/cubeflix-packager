@@ -117,7 +117,15 @@ class Project:
         packages = ET.Element("packages")
         for package in self.packages:
             package_item = package.create_manifest_tree()
+            
+            # Add the format information.
+            formats = ET.Element("formats")
+            for i in package.output_formats:
+                formats.append(ET.Element("format", {"type": i}))
+            package_item.append(formats)
+
             packages.append(package_item)
+
         tree.append(packages)
 
         # Add the timestamp.
@@ -225,12 +233,6 @@ class Package:
         author.text = self.author
         tree.append(author)
 
-        # Add the format information.
-        formats = ET.Element("formats")
-        for i in self.output_formats:
-            formats.append(ET.Element("format", {"type": i}))
-        tree.append(formats)
-
         return tree
 
     def create_manifest(self):
@@ -244,6 +246,12 @@ class Package:
         timestamp = ET.Element("timestamp")
         timestamp.text = str(datetime.datetime.now())
         tree.append(timestamp)
+
+        # Add the format information.
+        formats = ET.Element("formats")
+        for i in self.output_formats:
+            formats.append(ET.Element("format", {"type": i}))
+        tree.append(formats)
 
         return ET.tostring(tree, encoding='utf8', method='xml')
 
@@ -312,6 +320,16 @@ def load_project(path):
         with open(path, 'r') as json_file:
             project_json = json.load(json_file)
 
+        # Apply defaults.
+        if not 'path' in project_json:
+            project_json['path'] = "."
+        if not 'description' in project_json:
+            project_json['description'] = ""
+        if not 'author' in project_json:
+            project_json['author'] = ""
+        if not 'license' in project_json:
+            project_json['license'] = ""
+
         # Load each package.
         packages = []
         for package in project_json['packages']:
@@ -328,6 +346,16 @@ def load_project(path):
                 package_items = package['package_items']
             else:
                 package_items = None
+
+            # Apply defaults.
+            if not 'path' in package:
+                package['path'] = "."
+            if not 'description' in package:
+                package['description'] = ""
+            if not 'version' in package:
+                package['version'] = ""
+            if not 'author' in package:
+                package['author'] = ""
 
             # Create the package.
             package_obj = Package(package['name'], package['path'], package['contents'], \
