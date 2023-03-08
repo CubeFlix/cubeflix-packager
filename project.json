@@ -43,6 +43,18 @@
             "description": "cubeflix-packager windows distribution",
             "version": "1.0.0",
             "author": "cubeflix"
+        },
+        {
+            "name": "documentation",
+            "path": "",
+            "contents": [
+                "documentation",
+                "README.md"
+            ],
+            "output_formats": ["tar-gz", "zip"],
+            "description": "cubeflix-packager documentation",
+            "version": "1.0.0",
+            "author": "cubeflix"
         }
     ]
 }

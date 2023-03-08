@@ -335,9 +335,10 @@ def load_project(path):
         for package in project_json['packages']:
             # Create the pre-package function.
             if 'pre_package' in package:
+                commands = package['pre_package']
                 def pre_package(path):
                     with working_directory(path):
-                        for command in package['pre_package']:
+                        for command in commands:
                             os.system(command)
             else:
                 pre_package = None
